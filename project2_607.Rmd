@@ -1,0 +1,288 @@
+---
+title: "US Efficiency of Hospital-Based Emergency Care Evaluation"
+author: "Chunhui Zhu"
+date: "October 4, 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+###Assignment
+The goal of this assignment is to give you practice in preparing different datasets for downstream analysis work.
+
+###Your task is to:
+####(1)Choose any three of the "wide" datasets identified in the Week 6 Discussion items.  (You may use your own dataset; please don't use my Sample Post dataset, since that was used in your Week 6 assignment!)  
+
+For each of the three chosen datasets:
+  ???Create a .CSV file (or optionally, a MySQL database!) that includes all of the information included in the dataset.  You're encouraged to use a "wide" structure similar to how the information appears in the discussion item, so that you can practice tidying and transformations as described below.
+???
+  Read the information from your .CSV file into R, and use tidyr and dplyr as needed to tidy and transform your data.  [Most of your grade will be based on this step!]
+???
+####(2)Perform the analysis requested in the discussion item.
+???
+####our code should be in an R Markdown file, posted to rpubs.com, and should include narrative descriptions of your data cleanup work, analysis,and conclusions.
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+#NY state hospital Timely and Effective Care Evalution
+###Project Period: 10/1/2015-9/30/2016
+In this porject, we are going to visualize how timely and effective for states local hospitls' performence based emergency care.The eveluation will depent on the waiting time(Score) and percentage (Score) in comparision. The goal is to find the best efficient hospital in each by various category, and in overall category.
+
+
+###R "idyr" "dplyr"
+```{r ecoh=F}
+library("tidyr")
+library("dplyr")
+library("ggplot2")
+library("ggthemes")
+```
+
+
+##US Timely and Effective Care data set Resource
+https://data.medicare.gov/data/hospital-compare#
+
+
+##Date Set Description:
+"The measures of timely and effective care (also known as "process of care" measures) show the percentage of hospital patients who got treatments known to get the best results for certain common, serious medical conditions or surgical procedures; how quickly hospitals treat patients who come to the hospital with certain medical emergencies; and how well hospitals provide preventive services. These measures only apply to patients for whom the recommended treatment would be appropriate. The measures of timely and effective care apply to adults and children treated at hospitals paid under the Inpatient Prospective Payment System (IPPS) or the Outpatient Prospective Payment System (OPPS), as well as those that voluntarily report data on measures for whom the recommended treatments would be appropriate including: Medicare patients, Medicare managed care patients, and non-Medicare patients. Timely and effective care measures include cataract care follow-up, colonoscopy follow-up, heart attack care, emergency department care, preventive care, stroke care, blood clot prevention and treatment, and pregnancy and delivery care measures. "
+
+
+##Three data sets: 
+###1.table ndf-Timely and Effective Care - National
+###2.table sdf-Timely and Effective Care - State
+###3.table hdf-Timely and Effective Care - Hospital
+
+There are some common variables in these three tables,"Measure Name", "Measure ID", "Score","Condition","Measure Start Date" and "Measure End Date".Amoung of them, "Measure ID" is briefs/symbol of "Measure Name", giving the discription of observation."Score" can be waitting time or percentage."Condition" is department of patient visit, like Emergency Department,Heart Attack or Chest Pain,Preventive Care,and etc."Measure Start Date" and "Measure End Date" provid us the period form Oct.1 2015 to Sep.30 2016.
+
+```{r}
+ndf<-read.csv("Timely and Effective Care _National.csv",stringsAsFactors = FALSE)
+glimpse(ndf)
+sdf<-read.csv("Timely and Effective Care_State.csv",stringsAsFactors = FALSE)
+glimpse(sdf)
+hdf<-read.csv("Timely and Effective Care _Hospital.csv",stringsAsFactors = FALSE)
+glimpse(hdf)
+```
+
+
+
+###Step1:Join tables and rename columns 
+
+My method is to use left_jion function to connect these three tables. In table ndf,I observed 'measure ID' in ndf and sdf tables has some oberservations that are not in hdf, like min, max, high_min, low_min, high_max and ect.For example, "ED_1b_MEDIUM_MIN"" gives "ED_1b" lower bound of medium at the same measure. I use distinct function to remove the duplicate rows if it exists after they join. After joined three table, these observations will have a lot of NA value under hospital's variables.  
+
+```{r}
+sumdf<-left_join(left_join(ndf, sdf, by=c("Measure.Name","Measure.ID","Condition","Footnote","Measure.Start.Date","Measure.End.Date")), hdf, by=c("Measure.ID","State","Condition","Measure.Start.Date","Measure.End.Date"))
+distinct(sumdf) #remove duplicate rows if it's exist.
+dim(sumdf)
+glimpse(sumdf)
+```
+
+
+Rename and clarify variable names in sumdf data set.
+```{r}
+colnames(sumdf)[colnames(sumdf)=="Measure.Name.x"] <- "Measure.Name.National"
+colnames(sumdf)[colnames(sumdf)=="Footnote.x"] <- "Footnote.National"
+colnames(sumdf)[colnames(sumdf)=="Score.x"] <- "Score.National"
+colnames(sumdf)[colnames(sumdf)=="Score.y"] <- "Score.State"
+colnames(sumdf)[colnames(sumdf)=="Score"] <- "Score.Hospital"
+colnames(sumdf)[colnames(sumdf)=="Measure.Name.y"] <- "Measure.Name.Hospital"
+colnames(sumdf)[colnames(sumdf)=="Sample"] <- "Sample.Hospital"
+colnames(sumdf)[colnames(sumdf)=="Footnote.y"] <- "Footnote.Hospital"
+head(sumdf,3)
+```
+
+creat a hospital_US.csv file for t data set at "C:/Users/Ivy/Desktop/607/W6"
+
+```{r}
+setwd("C:/Users/Ivy/Desktop/607/W6")
+write.csv(sumdf,"hospital_US.csv")
+```
+
+
+
+###Step2: Chuncate NA data set and Change data type
+
+I am going to remove some observations. For example, "ED_1b_MEDIUM_MIN"" gives "ED_1b" lower bound of medium at the same mesuremen. I will remove such type of observations. Also, I will remove the "Not Avaliable" in Score.Hospital and Sample.Hospital columns. 
+
+```{r}
+sumdf1<-filter(sumdf, nchar(sumdf$Measure.ID)<7)
+sumdf1<-sumdf1[- grep("Not Available", sumdf1$Score.Hospital),]
+glimpse(sumdf1)
+```
+
+I convert Score and sample's char data type to numeric data type. Also I obersered "Score" could be median or percentages. I divide differnt type of Score into two tables median score and percent score.I filter condition which is emergency department in two tables Emg_Median and Emg_percent.
+
+```{r}
+sumdf1$Score.State<-as.numeric(sumdf1$Score.State)
+sumdf1$Score.Hospital<-as.numeric(sumdf1$Score.Hospital)
+sumdf1$Sample.Hospital<-as.numeric(sumdf1$Sample.Hospital)
+
+v<-grep("Median|median", sumdf1$Measure.Name.National,value = TRUE)
+median_t<-sumdf1[sumdf1$Measure.Name.National %in% v,]
+Emg_median<-filter(median_t, median_t$Condition=="Emergency Department")
+#View(Emg_median)
+
+percent_t<-subset(sumdf1,!(sumdf1$Measure.Name.National %in% v))
+percent_t$Score.National<-percent_t$Score.National/100
+percent_t$Score.State<-percent_t$Score.State/100
+percent_t$Score.Hospital<-percent_t$Score.Hospital/100
+Emg_percent<-filter(percent_t, percent_t$Condition=="Emergency Department")
+#View(Emg_percent)
+```
+
+
+
+###Step3: Seperate Score: interger and percentage 
+
+I creat two subset from two tables and named M (Median Score) and P(Percentage Score). Each contains 6 variables "Hospital.Name","Category","State,Score.State","Score.Hospital","Sample.Hospital". 
+
+The following will look for the spread of local hospitals in each state by different category.
+
+```{r}
+M<-select(Emg_median,Hospital.Name,Category,State,Score.State,Score.Hospital,Sample.Hospital)
+#summary(M)
+ggplot(M,aes(x=M$State,y=M$Score.Hospital,color=Category, size=Sample.Hospital))+geom_point()+theme_classic()
+```
+
+####Discription for Category: 
+  Door to diagnostic eval: Average (median) time patients spent in the emergency department before they were seen by a healthcare professional A lower number of minutes is better
+
+  ED1:Average (median) time patients spent in the emergency department, before they were admitted to the hospital as an inpatient A lower number of minutes is better
+
+  ED2:Average (median) time patients spent in the emergency department, after the doctor decided to admit them as an inpatient before leaving the emergency department for their inpatient room A lower number of minutes is better
+
+  Median time to pain med: Average (median) time patients who came to the emergency department with broken bones had to wait before getting pain medication A lower number of minutes is better
+
+  Average (median) time patients spent in the emergency department before leaving from the visit A lower number of minutes is better
+
+All measures in categore are within a range of the score. In table M, all measures are the lower score are the better. 
+
+```{r}
+P<-select(Emg_percent,Hospital.Name,Category,State,Score.State,Score.Hospital,Sample.Hospital)
+#summary(P)
+ggplot(P,aes(x=P$State,y=P$Score.Hospital,color=Category))+geom_point()+theme_classic()
+```
+####Discription for Category: 
+
+Head CT results: Percentage of patients who came to the emergency department with stroke symptoms who received brain scan results within 45 minutes of arrival Higher percentages are better
+
+Left before being seen: Percentage of patients who left the emergency department before being seen Lower percentages are better
+
+
+All measures in categore are within a range of the score. In table M, all measures are the min score are the best. 
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+The following I am going to observe if "Score.Hospital" and "Sample.Hospital" have correlation in verall, and in each category by state. 
+
+```{r}
+cor(M$Score.Hospital,M$Sample.Hospital)
+Mt<-split(M, with(M, interaction(Category)), drop = F)
+cor(Mt$`Door to diagnostic eval`$Score.Hospital, Mt$`Door to diagnostic eval`$Sample.Hospital)
+cor(Mt$ED1$Score.Hospital, Mt$ED1$Sample.Hospital)
+cor(Mt$ED2$Score.Hospital, Mt$ED2$Sample.Hospital)
+cor(Mt$`Median time to pain med`$Score.Hospital, Mt$`Median time to pain med`$Sample.Hospital)
+cor(Mt$`OP 18`$Score.Hospital, Mt$`OP 18`$Sample.Hospital)
+```
+
+```{r}
+cor(P$Score.Hospital,P$Sample.Hospital)
+Pt<-split(P, with(P, interaction(Category)), drop = F)
+cor(Pt$`Head CT results`$Score.Hospital, Pt$`Head CT results` $Sample.Hospital)
+cor(Pt$`Left before being seen` $Score.Hospital, Pt$`Left before being seen` $Sample.Hospital)
+```
+
+From above statistic results, "Score.Hospital" and "Sample.Hospital" do not have correlation in verall, and in each category by state.
+
+
+
+###Step5: Evaluate correlation of Score.Hospital and Sample.Hospital
+
+The following I will use cor function to find the correlation.
+
+```{r}
+cor(M$Score.Hospital,M$Sample.Hospital)
+Mt<-split(M, with(M, interaction(Category)), drop = F)
+cor(Mt$`Door to diagnostic eval`$Score.Hospital, Mt$`Door to diagnostic eval`$Sample.Hospital)
+cor(Mt$ED1$Score.Hospital, Mt$ED1$Sample.Hospital)
+cor(Mt$ED2$Score.Hospital, Mt$ED2$Sample.Hospital)
+cor(Mt$`Median time to pain med`$Score.Hospital, Mt$`Median time to pain med`$Sample.Hospital)
+cor(Mt$`OP 18`$Score.Hospital, Mt$`OP 18`$Sample.Hospital)
+```
+
+```{r}
+cor(P$Score.Hospital,P$Sample.Hospital)
+Pt<-split(P, with(P, interaction(Category)), drop = F)
+cor(Pt$`Head CT results`$Score.Hospital, Pt$`Head CT results` $Sample.Hospital)
+cor(Pt$`Left before being seen` $Score.Hospital, Pt$`Left before being seen` $Sample.Hospital)
+```
+From the correlation coefficient, Score.Hospital and Sample.Hospital have no correlation or very weake correlation. 
+
+
+###Step6:Scale sample size in Score, and find the most efficient hospital in each state by category
+
+To evaluate the performence for each hospital, I will scale the sample size in the score.hospital, which mean the one handing larger size, the one will have better score. 
+
+For Median score talbe, I calculate the control value which is ration of each sample.hospital and the mean size of each state. Since in this table the small number is the better. so I use each Score.Hospital divide the control value.
+
+```{r}
+M1<- M%>% group_by(Category,State)%>%mutate(mean(Sample.Hospital))%>%mutate(Score.Hospital/(Sample.Hospital/mean(Sample.Hospital)))
+
+colnames(M1)[colnames(M1)=="Score.Hospital/(Sample.Hospital/mean(Sample.Hospital))"] <- "Socre.H.StateM"
+
+M2<-M1%>%group_by(Category,State) %>% filter(Socre.H.StateM==min(Socre.H.StateM))
+BestM<-data.frame(M2$Hospital.Name,M2$Category,M2$State)
+colnames(BestM)<-c("Hospital.Name","Category","State")
+```
+
+
+For Percent score talbe, I evaluate "Head CT results".I calculate the control value which is ration of each sample.hospital and the mean size of each state. Since in this table the higher number is the better. so I use each Score.Hospital multiply the control value.
+
+```{r}
+P1<-P%>% filter(Category=="Head CT results")%>% group_by(State)%>%mutate(mean(Sample.Hospital))%>%mutate(Score.Hospital*(Sample.Hospital/mean(Sample.Hospital)))
+
+colnames(P1)[colnames(P1)=="Score.Hospital * (Sample.Hospital/mean(Sample.Hospital))"] <- "Socre.H.StateM"
+
+P11<- P1%>%group_by(State) %>% filter(Socre.H.StateM==max(Socre.H.StateM))
+BestP1<-data.frame(P11$Hospital.Name,P11$Category,P11$State)
+colnames(BestP1)<-c("Hospital.Name","Category","State")
+
+BestP1%>%group_by(Hospital.Name,Category)%>%filter(n()>1) #Check if there duplicate value after group_by columns
+```
+
+
+For Percent score talbe, I evaluate "Left before being seen".I calculate the control value which is ration of each sample.hospital and the mean size of each state. Since in this table the lower number is the better. so I use each Score.Hospital divde the control value.
+
+```{r}
+P2<-P%>% filter(Category=="Left before being seen")%>% group_by(State)%>%mutate(mean(Sample.Hospital))%>%mutate(Score.Hospital/(Sample.Hospital/mean(Sample.Hospital)))
+
+colnames(P2)[colnames(P2)=="Score.Hospital/(Sample.Hospital/mean(Sample.Hospital))"] <- "Socre.H.StateM"
+
+P22<- P2%>%group_by(State) %>% filter(Socre.H.StateM==max(Socre.H.StateM))
+BestP2<-data.frame(P22$Hospital.Name,P22$Category,P22$State)
+colnames(BestP2)<-c("Hospital.Name","Category","State")
+
+BestP2%>%group_by(Hospital.Name,Category)%>%filter(n()>1) #Check if there duplicate value after group_by columns
+```
+
+The Efficient_CS table incluses the most efficient performent hospital by category in each state.
+```{r}
+Efficient_CS<-bind_rows(BestM,BestP1,BestP2)
+
+Efficient_CS%>%group_by(Hospital.Name,Category)%>%filter(n()>1) 
+#Check if there duplicate value after group_by columns, 0 means no duplicate.
+
+head(Efficient_CS)
+```
+
+
+###Step7:Scale sample size in Score, and find the overall most efficient hospital in each state 
+
+
+Since "Head CT results" in P1 category have negative relation with the other measures, I use its score multiply -1 befroe I sum up all other scores.
+```{r}
+P1$Socre.H.StateM<-P1$Socre.H.StateM*(-1)
+BestAllM<-bind_rows(M1,P1,P2)
+BestAllM<-M1%>%group_by(State,Hospital.Name)%>%summarise(Socre.H.StateM = sum(Socre.H.StateM))%>%filter(Socre.H.StateM==min(Socre.H.StateM))
+head(BestAllM)
+```
+
