@@ -1,5 +1,5 @@
 ---
-title: "US Efficiency of Hospital-Based Emergency Care Evaluation"
+title: "US Hospital Comapre-Finding Efficiency Hospital"
 author: "Chunhui Zhu"
 date: "October 4, 2017"
 output:
@@ -30,7 +30,7 @@ For each of the three chosen datasets:
 In this porject, we are going to visualize how timely and effective for states local hospitls' performence based emergency care.The eveluation will depent on the waiting time(Score) and percentage (Score) in comparision. The goal is to find the best efficient hospital in each by various category, and in overall category.
 
 
-###R "idyr" "dplyr"
+###R "tidyr" "dplyr"
 ```{r ecoh=F}
 library("tidyr")
 library("dplyr")
@@ -67,11 +67,10 @@ glimpse(hdf)
 
 ###Step1:Join tables and rename columns 
 
-My method is to use left_jion function to connect these three tables. In table ndf,I observed 'measure ID' in ndf and sdf tables has some oberservations that are not in hdf, like min, max, high_min, low_min, high_max and ect.For example, "ED_1b_MEDIUM_MIN"" gives "ED_1b" lower bound of medium at the same measure. I use distinct function to remove the duplicate rows if it exists after they join. After joined three table, these observations will have a lot of NA value under hospital's variables.  
+My method is to use left_jion function to connect these three tables. In table ndf,I observed 'measure ID' in ndf and sdf tables has some oberservations that are not in hdf, like min, max, high_min, low_min, high_max and ect.For example, "ED_1b_MEDIUM_MIN"" gives "ED_1b" lower bound of medium at the same measure.After joined three table, these observations will have a lot of NA value under hospital's variables.  
 
 ```{r}
 sumdf<-left_join(left_join(ndf, sdf, by=c("Measure.Name","Measure.ID","Condition","Footnote","Measure.Start.Date","Measure.End.Date")), hdf, by=c("Measure.ID","State","Condition","Measure.Start.Date","Measure.End.Date"))
-distinct(sumdf) #remove duplicate rows if it's exist.
 dim(sumdf)
 glimpse(sumdf)
 ```
@@ -169,30 +168,6 @@ Left before being seen: Percentage of patients who left the emergency department
 
 
 All measures in categore are within a range of the score. In table M, all measures are the min score are the best. 
-
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-The following I am going to observe if "Score.Hospital" and "Sample.Hospital" have correlation in verall, and in each category by state. 
-
-```{r}
-cor(M$Score.Hospital,M$Sample.Hospital)
-Mt<-split(M, with(M, interaction(Category)), drop = F)
-cor(Mt$`Door to diagnostic eval`$Score.Hospital, Mt$`Door to diagnostic eval`$Sample.Hospital)
-cor(Mt$ED1$Score.Hospital, Mt$ED1$Sample.Hospital)
-cor(Mt$ED2$Score.Hospital, Mt$ED2$Sample.Hospital)
-cor(Mt$`Median time to pain med`$Score.Hospital, Mt$`Median time to pain med`$Sample.Hospital)
-cor(Mt$`OP 18`$Score.Hospital, Mt$`OP 18`$Sample.Hospital)
-```
-
-```{r}
-cor(P$Score.Hospital,P$Sample.Hospital)
-Pt<-split(P, with(P, interaction(Category)), drop = F)
-cor(Pt$`Head CT results`$Score.Hospital, Pt$`Head CT results` $Sample.Hospital)
-cor(Pt$`Left before being seen` $Score.Hospital, Pt$`Left before being seen` $Sample.Hospital)
-```
-
-From above statistic results, "Score.Hospital" and "Sample.Hospital" do not have correlation in verall, and in each category by state.
-
 
 
 ###Step5: Evaluate correlation of Score.Hospital and Sample.Hospital
